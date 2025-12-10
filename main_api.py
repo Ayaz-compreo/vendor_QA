@@ -1,0 +1,276 @@
+"""
+FastAPI Backend for Vendor Comparison System
+Integrates with Compreo ERP SQL Server database
+"""
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import os
+from typing import List, Dict
+from datetime import datetime
+import traceback
+
+# Import local modules
+from models import (
+    AnalyzeRFQRequest,
+    AnalyzeManualRequest,
+    ComparisonResponse,
+    RankingResult,
+    AIInsights,
+    MaterialInfo,
+    VendorContact,
+    ErrorResponse
+)
+from db_integration import VendorQuotationDB
+from comparison_engine import VendorComparisonEngine
+from ai_engine import AIInsightsEngine
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Compreo Vendor Comparison API",
+    description="AI-powered vendor quotation analysis for Compreo ERP",
+    version="1.0.0"
+)
+
+# CORS middleware - Allow Angular app to call API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict to your Angular app domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Database configuration
+DB_CONFIG = {
+    "server": "20.204.64.39,14333",
+    "database": "sit-cmp-projectsystems",
+    "username": "ayaz@cmp",
+    "password": "ayaz@cmp123"
+}
+
+# Initialize database connection
+db = VendorQuotationDB(**DB_CONFIG)
+
+
+@app.get("/", tags=["Health"])
+def root():
+    """Health check endpoint"""
+    return {
+        "status": "ok",
+        "service": "Compreo Vendor Comparison API",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    """Check database connectivity"""
+    try:
+        db_status = db.test_connection()
+        return {
+            "status": "healthy" if db_status else "unhealthy",
+            "database": "connected" if db_status else "disconnected",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "unhealthy",
+                "database": "error",
+                "error": str(e)
+            }
+        )
+
+
+@app.post(
+    "/api/vendor-comparison/analyze",
+    response_model=ComparisonResponse,
+    tags=["Vendor Comparison"],
+    summary="Analyze RFQ vendor quotations from database"
+)
+def analyze_rfq(request: AnalyzeRFQRequest):
+    """
+    Fetch vendor quotations from database and perform comparison analysis
+    
+    - Fetches data from MM_PUR_VQUOT_H and MM_PUR_VQUOT_T tables
+    - Ranks vendors based on price, payment terms, and delivery
+    - Generates AI-powered insights and recommendations
+    
+    **Returns:** Vendor ranking + AI insights
+    """
+    try:
+        # 1. Fetch vendor quotations from database
+        print(f"📊 Fetching quotations for RFQ: {request.rfq_no}, Plant: {request.plant_code}")
+        
+        raw_data = db.fetch_vendor_quotations(request.rfq_no, request.plant_code)
+        
+        if not raw_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No vendor quotations found for RFQ {request.rfq_no} at plant {request.plant_code}"
+            )
+        
+        print(f"✅ Fetched {len(raw_data)} quotation records")
+        
+        # 2. Transform data to comparison format
+        vendors_data = db.transform_to_comparison_format(raw_data)
+        print(f"✅ Transformed into {len(vendors_data)} vendors")
+        
+        # 3. Calculate ranking
+        comparison_engine = VendorComparisonEngine(priority=request.priority.value)
+        ranking = comparison_engine.rank_vendors(vendors_data)
+        print(f"✅ Ranking calculated with priority: {request.priority.value}")
+        
+        # 4. Generate AI insights
+        ai_engine = AIInsightsEngine()
+        ai_insights = ai_engine.generate_insights(ranking, request.priority.value)
+        print(f"✅ AI insights generated")
+        
+        # 5. Build response
+        response = ComparisonResponse(
+            rfq_no=request.rfq_no,
+            plant_code=request.plant_code,
+            priority=request.priority.value,
+            ranking=ranking,
+            ai_insights=ai_insights,
+            metadata={
+                "total_vendors": len(vendors_data),
+                "analysis_date": datetime.now().isoformat(),
+                "total_materials": sum(len(v.get('materials', [])) for v in vendors_data)
+            }
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Analysis failed: {str(e)}"
+        )
+
+
+@app.post(
+    "/api/vendor-comparison/analyze-manual",
+    response_model=ComparisonResponse,
+    tags=["Vendor Comparison"],
+    summary="Analyze manually entered vendor data"
+)
+def analyze_manual(request: AnalyzeManualRequest):
+    """
+    Analyze vendor comparison with manually entered data
+    
+    Useful for:
+    - Testing without database
+    - Comparing vendors from external sources
+    - Quick what-if analysis
+    
+    **Returns:** Vendor ranking + AI insights
+    """
+    try:
+        # Convert manual entries to comparison format
+        vendors_data = []
+        for vendor in request.vendors:
+            vendors_data.append({
+                'vendor_name': vendor.vendor_name,
+                'parameters': {
+                    'price': vendor.price,
+                    'payment_terms_days': vendor.payment_terms_days,
+                    'delivery_days': vendor.delivery_days
+                },
+                'materials': [],
+                'contact': {}
+            })
+        
+        # Calculate ranking
+        comparison_engine = VendorComparisonEngine(priority=request.priority.value)
+        ranking = comparison_engine.rank_vendors(vendors_data)
+        
+        # Generate AI insights
+        ai_engine = AIInsightsEngine()
+        ai_insights = ai_engine.generate_insights(ranking, request.priority.value)
+        
+        # Build response
+        response = ComparisonResponse(
+            priority=request.priority.value,
+            ranking=ranking,
+            ai_insights=ai_insights,
+            metadata={
+                "total_vendors": len(vendors_data),
+                "analysis_date": datetime.now().isoformat(),
+                "source": "manual_entry"
+            }
+        )
+        
+        return response
+        
+    except Exception as e:
+        print(f"❌ Error: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Analysis failed: {str(e)}"
+        )
+
+
+@app.get("/api/rfq/list", tags=["RFQ Management"])
+def list_recent_rfqs(plant_code: int = 1100, limit: int = 10):
+    """
+    Get list of recent RFQs with vendor quotations
+    
+    Useful for Angular dropdown to select RFQ
+    """
+    try:
+        query = """
+        SELECT DISTINCT
+            h.RFQ_NO,
+            h.RFQ_YEAR,
+            COUNT(DISTINCT h.VENDOR_NO) as VendorCount,
+            MAX(h.CREATEDON) as LastUpdated
+        FROM MM_PUR_VQUOT_H h
+        WHERE h.PLANT_CODE = ?
+        GROUP BY h.RFQ_NO, h.RFQ_YEAR
+        ORDER BY MAX(h.CREATEDON) DESC
+        """
+        
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, (plant_code,))
+        
+        results = []
+        for row in cursor.fetchmany(limit):
+            results.append({
+                "rfq_no": row[0],
+                "rfq_year": row[1],
+                "vendor_count": row[2],
+                "last_updated": row[3].isoformat() if row[3] else None
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return {"rfqs": results, "total": len(results)}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch RFQ list: {str(e)}"
+        )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    # Run FastAPI server
+    print("🚀 Starting Compreo Vendor Comparison API...")
+    print("📊 Database:", DB_CONFIG['database'])
+    print("🌐 Server: http://localhost:8000")
+    print("📖 API Docs: http://localhost:8000/docs")
+    
+    uvicorn.run("main_api:app", host="0.0.0.0", port=8000, reload=True)
