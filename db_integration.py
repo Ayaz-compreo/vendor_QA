@@ -12,6 +12,12 @@ class VendorQuotationDB:
     
     def __init__(self, server: str, database: str, username: str, password: str):
         """Initialize database connection"""
+        # STORE THESE AS INSTANCE ATTRIBUTES!
+        self.server = server
+        self.database = database
+        self.username = username
+        self.password = password
+        
         self.connection_string = (
             f"DRIVER={{ODBC Driver 17 for SQL Server}};"
             f"SERVER={server};"
@@ -20,11 +26,59 @@ class VendorQuotationDB:
             f"PWD={password};"
             f"TrustServerCertificate=yes;"
         )
-        
     def get_connection(self):
         """Create and return database connection"""
+        # Try multiple driver paths/locations
+        driver_paths = [
+            # 1. First try the runtime-installed driver
+            '/tmp/odbc_driver/opt/microsoft/msodbcsql17/lib64/libmsodbcsql-17.10.so.5.1',
+            # 2. Try standard driver names
+            'ODBC Driver 17 for SQL Server',
+            'ODBC Driver 18 for SQL Server',
+            'ODBC Driver 13 for SQL Server'
+        ]
+        
+        last_error = None
+        
+        for driver in driver_paths:
+            try:
+                # If driver is a file path (starts with /), use it directly
+                if driver.startswith('/'):
+                    connection_string = (
+                        f"DRIVER={{{driver}}};"
+                        f"SERVER={self.server};"
+                        f"DATABASE={self.database};"
+                        f"UID={self.username};"
+                        f"PWD={self.password};"
+                        f"TrustServerCertificate=yes;"
+                    )
+                else:
+                    # It's a driver name
+                    connection_string = (
+                        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                        f"SERVER={self.server};"
+                        f"DATABASE={self.database};"
+                        f"UID={self.username};"
+                        f"PWD={self.password};"
+                        f"TrustServerCertificate=yes;"
+                    )
+                
+                print(f"🔗 Trying database connection with driver: {driver}")
+                conn = pyodbc.connect(connection_string, timeout=10)
+                print(f"✅ Connected successfully with driver: {driver}")
+                return conn
+                
+            except pyodbc.Error as e:
+                last_error = e
+                print(f"⚠️ Failed with driver '{driver}': {str(e)[:100]}...")
+                continue
+        
+        # If all drivers failed, raise the last error
+        raise Exception(f"Could not connect with any ODBC driver. Last error: {str(last_error)}")
+    ''' def get_connection(self):
+        """Create and return database connection"""
         return pyodbc.connect(self.connection_string)
-    
+    '''
     def fetch_vendor_quotations(self, rfq_no: str, plant_code: int) -> List[Dict]:
         """
         Fetch all vendor quotations for a given RFQ

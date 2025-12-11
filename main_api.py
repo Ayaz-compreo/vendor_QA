@@ -1,7 +1,116 @@
+
 """
 FastAPI Backend for Vendor Comparison System
 Integrates with Compreo ERP SQL Server database
 """
+import os
+import sys
+import subprocess  # ADD THIS IMPORT!
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from typing import List, Dict
+from datetime import datetime
+import traceback
+
+# ================== ODBC DRIVER INSTALLATION AT RUNTIME ==================
+def install_odbc_driver_at_runtime():
+    """
+    Install ODBC Driver 17 for SQL Server when the app starts.
+    This works around Render's read-only file system restrictions.
+    """
+    import platform
+    
+    print("🔧 Starting ODBC Driver runtime installation...")
+    
+    # Skip on Windows - ODBC driver should be manually installed
+    if platform.system() == "Windows":
+        print("⚠️  Windows detected - skipping runtime ODBC installation")
+        print("💡 Install ODBC Driver 17 for SQL Server manually from:")
+        print("   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server")
+        return True
+    
+    # Check if ODBC driver is already available
+    try:
+        # Try to list existing drivers first
+        result = subprocess.run(['odbcinst', '-q', '-d'], 
+                              capture_output=True, text=True)
+        if 'ODBC Driver 17 for SQL Server' in result.stdout:
+            print("✅ ODBC Driver 17 for SQL Server is already installed")
+            return True
+    except:
+        pass
+    
+    try:
+        # Create a temporary directory in /tmp (which is writable)
+        driver_dir = "/tmp/odbc_driver"
+        os.makedirs(driver_dir, exist_ok=True)
+        
+        print(f"📦 Downloading ODBC driver to {driver_dir}...")
+        
+        # Download ODBC driver .deb package
+        curl_cmd = [
+            'curl', '-L', '-o', f'{driver_dir}/msodbcsql.deb',
+            'https://packages.microsoft.com/debian/11/prod/pool/main/m/msodbcsql17/msodbcsql17_17.10.5.1-1_amd64.deb'
+        ]
+        subprocess.run(curl_cmd, check=True, capture_output=True)
+        
+        # Extract the .deb file
+        print("📂 Extracting ODBC driver package...")
+        subprocess.run(['ar', 'x', f'{driver_dir}/msodbcsql.deb'], 
+                      cwd=driver_dir, check=True, capture_output=True)
+        
+        # Extract the data.tar.xz
+        if os.path.exists(f'{driver_dir}/data.tar.xz'):
+            subprocess.run(['tar', '-xf', f'{driver_dir}/data.tar.xz'], 
+                          cwd=driver_dir, check=True, capture_output=True)
+        
+        # Set LD_LIBRARY_PATH to include our extracted driver
+        lib_path = f"{driver_dir}/opt/microsoft/msodbcsql17/lib64"
+        if os.path.exists(lib_path):
+            os.environ['LD_LIBRARY_PATH'] = lib_path + ':' + os.environ.get('LD_LIBRARY_PATH', '')
+            print(f"✅ ODBC driver installed at: {lib_path}")
+            
+            # Verify the driver file exists
+            driver_file = f"{lib_path}/libmsodbcsql-17.10.so.5.1"
+            if os.path.exists(driver_file):
+                print(f"✅ Driver file found: {driver_file}")
+                return True
+            else:
+                print(f"⚠️ Driver file not found at: {driver_file}")
+                return False
+        else:
+            print(f"⚠️ Library path not found: {lib_path}")
+            return False
+            
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Subprocess error: {e.stderr.decode() if e.stderr else str(e)}")
+        return False
+    except Exception as e:
+        print(f"❌ Runtime ODBC installation failed: {str(e)}")
+        return False
+
+# Install ODBC driver when module loads
+ODBC_INSTALLED = install_odbc_driver_at_runtime()
+print(f"ODBC Runtime Installation: {'SUCCESS' if ODBC_INSTALLED else 'FAILED'}")
+# ================== END ODBC INSTALLATION ==================
+
+# Import local modules (AFTER ODBC installation)
+from models import (
+    AnalyzeRFQRequest,
+    AnalyzeManualRequest,
+    ComparisonResponse,
+    RankingResult,
+    AIInsights,
+    MaterialInfo,
+    VendorContact,
+    ErrorResponse
+)
+from db_integration import VendorQuotationDB
+from comparison_engine import VendorComparisonEngine
+from ai_engine import AIInsightsEngine
+
+# Rest of your existing code continues...
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -41,14 +150,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database configuration
+'''# Database configuration
 DB_CONFIG = {
     "server": "20.204.64.39,14333",
     "database": "sit-cmp-projectsystems",
     "username": "ayaz@cmp",
     "password": "ayaz@cmp123"
+}'''
+# Database configuration - Use environment variables for Render
+DB_CONFIG = {
+    "server": os.getenv("DB_SERVER", "20.204.64.39,14333"),
+    "database": os.getenv("DB_DATABASE", "sit-cmp-projectsystems"),
+    "username": os.getenv("DB_USERNAME", "ayaz@cmp"),
+    "password": os.getenv("DB_PASSWORD", "ayaz@cmp123")
 }
-
 # Initialize database connection
 db = VendorQuotationDB(**DB_CONFIG)
 
