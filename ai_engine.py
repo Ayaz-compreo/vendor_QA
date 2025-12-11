@@ -12,16 +12,67 @@ class AIInsightsEngine:
     
     def __init__(self):
         """Initialize AI engine with OpenRouter"""
+        import os
+        
         self.api_key = os.getenv("OPENROUTER_API_KEY")
-        self.model = os.getenv("LLM_MODEL", "google/gemini-2.0-flash-exp:free")
+        self.model = os.getenv("LLM_MODEL", "google/gemma-3-27b-it:free")
+        
+        print(f"🔍 AI Engine Init: Key length = {len(self.api_key) if self.api_key else 0}")
+        print(f"🔍 Running on Render: {'RENDER' in os.environ}")
         
         if self.api_key:
-            self.client = OpenAI(
+            self.client = self._initialize_openai_client()
+        else:
+            self.client = None
+            print("⚠️ No API key, using default insights")
+    
+    def _initialize_openai_client(self):
+        """Try multiple methods to initialize OpenAI client"""
+        methods_tried = []
+        
+        # Method 1: Standard initialization
+        try:
+            from openai import OpenAI
+            client = OpenAI(
                 api_key=self.api_key,
                 base_url="https://openrouter.ai/api/v1"
             )
-        else:
-            self.client = None
+            print("✅ OpenAI client initialized (Method 1 - Standard)")
+            return client
+        except TypeError as e:
+            methods_tried.append(f"Method 1 (Standard): {str(e)[:100]}")
+            if "proxies" in str(e):
+                # Method 2: With empty proxies
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(
+                        api_key=self.api_key,
+                        base_url="https://openrouter.ai/api/v1",
+                        proxies={}
+                    )
+                    print("✅ OpenAI client initialized (Method 2 - Empty proxies)")
+                    return client
+                except Exception as e2:
+                    methods_tried.append(f"Method 2 (Empty proxies): {str(e2)[:100]}")
+                    
+                    # Method 3: Legacy OpenAI library pattern
+                    try:
+                        import openai as legacy_openai
+                        legacy_openai.api_key = self.api_key
+                        legacy_openai.api_base = "https://openrouter.ai/api/v1"
+                        print("✅ OpenAI client initialized (Method 3 - Legacy pattern)")
+                        return legacy_openai
+                    except Exception as e3:
+                        methods_tried.append(f"Method 3 (Legacy): {str(e3)[:100]}")
+            else:
+                print(f"❌ Non-proxies TypeError: {e}")
+        
+        except Exception as e:
+            methods_tried.append(f"Method 1 (General error): {str(e)[:100]}")
+        
+        # If all methods failed
+        print(f"❌ All OpenAI initialization methods failed: {methods_tried}")
+        return None
     
     def generate_insights(self, ranking: List[RankingResult], priority: str) -> AIInsights:
         """
