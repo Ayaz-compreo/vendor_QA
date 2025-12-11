@@ -18,63 +18,71 @@ class AIInsightsEngine:
         self.model = os.getenv("LLM_MODEL", "google/gemma-3-27b-it:free")
         
         print(f"🔍 AI Engine Init: Key length = {len(self.api_key) if self.api_key else 0}")
-        print(f"🔍 Running on Render: {'RENDER' in os.environ}")
         
         if self.api_key:
-            self.client = self._initialize_openai_client()
+            try:
+                # MODERN PATTERN ONLY - No legacy fallbacks
+                from openai import OpenAI
+                
+                # SIMPLE initialization - let httpx handle proxies internally
+                self.client = OpenAI(
+                    api_key=self.api_key,
+                    base_url="https://openrouter.ai/api/v1"
+                )
+                print("✅ OpenAI client initialized successfully")
+                
+            except Exception as e:
+                print(f"❌ Failed to initialize OpenAI client: {e}")
+                print("⚠️ Falling back to default insights")
+                self.client = None
         else:
             self.client = None
             print("⚠️ No API key, using default insights")
     
-    def _initialize_openai_client(self):
-        """Try multiple methods to initialize OpenAI client"""
-        methods_tried = []
-        
-        # Method 1: Standard initialization
-        try:
-            from openai import OpenAI
-            client = OpenAI(
-                api_key=self.api_key,
-                base_url="https://openrouter.ai/api/v1"
-            )
-            print("✅ OpenAI client initialized (Method 1 - Standard)")
-            return client
-        except TypeError as e:
-            methods_tried.append(f"Method 1 (Standard): {str(e)[:100]}")
-            if "proxies" in str(e):
-                # Method 2: With empty proxies
-                try:
-                    from openai import OpenAI
-                    client = OpenAI(
-                        api_key=self.api_key,
-                        base_url="https://openrouter.ai/api/v1",
-                        proxies={}
-                    )
-                    print("✅ OpenAI client initialized (Method 2 - Empty proxies)")
-                    return client
-                except Exception as e2:
-                    methods_tried.append(f"Method 2 (Empty proxies): {str(e2)[:100]}")
-                    
-                    # Method 3: Legacy OpenAI library pattern
-                    try:
-                        import openai as legacy_openai
-                        legacy_openai.api_key = self.api_key
-                        legacy_openai.api_base = "https://openrouter.ai/api/v1"
-                        print("✅ OpenAI client initialized (Method 3 - Legacy pattern)")
-                        return legacy_openai
-                    except Exception as e3:
-                        methods_tried.append(f"Method 3 (Legacy): {str(e3)[:100]}")
-            else:
-                print(f"❌ Non-proxies TypeError: {e}")
-        
-        except Exception as e:
-            methods_tried.append(f"Method 1 (General error): {str(e)[:100]}")
-        
-        # If all methods failed
-        print(f"❌ All OpenAI initialization methods failed: {methods_tried}")
-        return None
-    
     def generate_insights(self, ranking: List[RankingResult], priority: str) -> AIInsights:
+        """
+        Generate comprehensive AI insights with 4 detailed sections
+        
+        Args:
+            ranking: List of ranked vendors
+            priority: User's priority
+            
+        Returns:
+            AIInsights object with 4 detailed sections + negotiation tips
+        """
+        if not self.client:
+            # Return default insights if client not initialized
+            print("🔄 No OpenAI client, using default insights")
+            return self._default_insights(ranking, priority)
+        
+        try:
+            print(f"🚀 Calling OpenRouter API with model: {self.model}")
+            
+            # Prepare vendor summary
+            vendors_summary = self._prepare_vendor_summary(ranking)
+            winner = ranking[0]
+            second = ranking[1] if len(ranking) > 1 else None
+            
+            # Generate all 4 sections using LLM
+            primary_rec = self._generate_primary_recommendation(vendors_summary, winner, priority)
+            alternate_strategy = self._generate_alternate_strategy(ranking, winner, second)
+            risk_consideration = self._generate_risk_consideration(ranking, winner)
+            project_impact = self._generate_project_impact(ranking, winner, priority)
+            negotiation_tips = self._generate_negotiation_tips(ranking, priority)
+            
+            print("✅ Real AI insights generated from OpenRouter")
+            return AIInsights(
+                primary_recommendation=primary_rec,
+                alternate_strategy=alternate_strategy,
+                risk_consideration=risk_consideration,
+                project_impact=project_impact,
+                negotiation_tips=negotiation_tips
+            )
+            
+        except Exception as e:
+            print(f"❌ AI generation error: {str(e)}")
+            return self._default_insights(ranking, priority)
+    '''def generate_insights(self, ranking: List[RankingResult], priority: str) -> AIInsights:
         """
         Generate comprehensive AI insights with 4 detailed sections
         
@@ -112,7 +120,7 @@ class AIInsightsEngine:
             
         except Exception as e:
             print(f"AI generation error: {str(e)}")
-            return self._default_insights(ranking, priority)
+            return self._default_insights(ranking, priority)'''
     
     def _prepare_vendor_summary(self, ranking: List[RankingResult]) -> str:
         """Prepare concise vendor summary for LLM"""

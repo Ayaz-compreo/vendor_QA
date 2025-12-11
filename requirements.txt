@@ -5,3 +5,7 @@ pyodbc==5.2.0
 pandas==2.2.3
 openai==1.54.0
 python-dotenv==1.0.1
+
+# ADD THESE TO FIX THE 'proxies' ERROR:
+httpx==0.27.0
+openai==1.54.0
