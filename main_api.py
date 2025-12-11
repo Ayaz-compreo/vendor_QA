@@ -1,116 +1,7 @@
-
 """
 FastAPI Backend for Vendor Comparison System
 Integrates with Compreo ERP SQL Server database
 """
-import os
-import sys
-import subprocess  # ADD THIS IMPORT!
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from typing import List, Dict
-from datetime import datetime
-import traceback
-
-# ================== ODBC DRIVER INSTALLATION AT RUNTIME ==================
-def install_odbc_driver_at_runtime():
-    """
-    Install ODBC Driver 17 for SQL Server when the app starts.
-    This works around Render's read-only file system restrictions.
-    """
-    import platform
-    
-    print("🔧 Starting ODBC Driver runtime installation...")
-    
-    # Skip on Windows - ODBC driver should be manually installed
-    if platform.system() == "Windows":
-        print("⚠️  Windows detected - skipping runtime ODBC installation")
-        print("💡 Install ODBC Driver 17 for SQL Server manually from:")
-        print("   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server")
-        return True
-    
-    # Check if ODBC driver is already available
-    try:
-        # Try to list existing drivers first
-        result = subprocess.run(['odbcinst', '-q', '-d'], 
-                              capture_output=True, text=True)
-        if 'ODBC Driver 17 for SQL Server' in result.stdout:
-            print("✅ ODBC Driver 17 for SQL Server is already installed")
-            return True
-    except:
-        pass
-    
-    try:
-        # Create a temporary directory in /tmp (which is writable)
-        driver_dir = "/tmp/odbc_driver"
-        os.makedirs(driver_dir, exist_ok=True)
-        
-        print(f"📦 Downloading ODBC driver to {driver_dir}...")
-        
-        # Download ODBC driver .deb package
-        curl_cmd = [
-            'curl', '-L', '-o', f'{driver_dir}/msodbcsql.deb',
-            'https://packages.microsoft.com/debian/11/prod/pool/main/m/msodbcsql17/msodbcsql17_17.10.5.1-1_amd64.deb'
-        ]
-        subprocess.run(curl_cmd, check=True, capture_output=True)
-        
-        # Extract the .deb file
-        print("📂 Extracting ODBC driver package...")
-        subprocess.run(['ar', 'x', f'{driver_dir}/msodbcsql.deb'], 
-                      cwd=driver_dir, check=True, capture_output=True)
-        
-        # Extract the data.tar.xz
-        if os.path.exists(f'{driver_dir}/data.tar.xz'):
-            subprocess.run(['tar', '-xf', f'{driver_dir}/data.tar.xz'], 
-                          cwd=driver_dir, check=True, capture_output=True)
-        
-        # Set LD_LIBRARY_PATH to include our extracted driver
-        lib_path = f"{driver_dir}/opt/microsoft/msodbcsql17/lib64"
-        if os.path.exists(lib_path):
-            os.environ['LD_LIBRARY_PATH'] = lib_path + ':' + os.environ.get('LD_LIBRARY_PATH', '')
-            print(f"✅ ODBC driver installed at: {lib_path}")
-            
-            # Verify the driver file exists
-            driver_file = f"{lib_path}/libmsodbcsql-17.10.so.5.1"
-            if os.path.exists(driver_file):
-                print(f"✅ Driver file found: {driver_file}")
-                return True
-            else:
-                print(f"⚠️ Driver file not found at: {driver_file}")
-                return False
-        else:
-            print(f"⚠️ Library path not found: {lib_path}")
-            return False
-            
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Subprocess error: {e.stderr.decode() if e.stderr else str(e)}")
-        return False
-    except Exception as e:
-        print(f"❌ Runtime ODBC installation failed: {str(e)}")
-        return False
-
-# Install ODBC driver when module loads
-ODBC_INSTALLED = install_odbc_driver_at_runtime()
-print(f"ODBC Runtime Installation: {'SUCCESS' if ODBC_INSTALLED else 'FAILED'}")
-# ================== END ODBC INSTALLATION ==================
-
-# Import local modules (AFTER ODBC installation)
-from models import (
-    AnalyzeRFQRequest,
-    AnalyzeManualRequest,
-    ComparisonResponse,
-    RankingResult,
-    AIInsights,
-    MaterialInfo,
-    VendorContact,
-    ErrorResponse
-)
-from db_integration import VendorQuotationDB
-from comparison_engine import VendorComparisonEngine
-from ai_engine import AIInsightsEngine
-
-# Rest of your existing code continues...
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -128,11 +19,14 @@ from models import (
     AIInsights,
     MaterialInfo,
     VendorContact,
-    ErrorResponse
+    ErrorResponse,
+    LineItemAnalysis
 )
 from db_integration import VendorQuotationDB
 from comparison_engine import VendorComparisonEngine
 from ai_engine import AIInsightsEngine
+from line_item_comparison_engine import LineItemComparisonEngine
+from line_item_comparison_engine import LineItemComparisonEngine
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -150,20 +44,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-'''# Database configuration
+# Database configuration
 DB_CONFIG = {
     "server": "20.204.64.39,14333",
     "database": "sit-cmp-projectsystems",
     "username": "ayaz@cmp",
     "password": "ayaz@cmp123"
-}'''
-# Database configuration - Use environment variables for Render
-DB_CONFIG = {
-    "server": os.getenv("DB_SERVER", "20.204.64.39,14333"),
-    "database": os.getenv("DB_DATABASE", "sit-cmp-projectsystems"),
-    "username": os.getenv("DB_USERNAME", "ayaz@cmp"),
-    "password": os.getenv("DB_PASSWORD", "ayaz@cmp123")
 }
+
 # Initialize database connection
 db = VendorQuotationDB(**DB_CONFIG)
 
@@ -211,10 +99,11 @@ def analyze_rfq(request: AnalyzeRFQRequest):
     Fetch vendor quotations from database and perform comparison analysis
     
     - Fetches data from MM_PUR_VQUOT_H and MM_PUR_VQUOT_T tables
-    - Ranks vendors based on price, payment terms, and delivery
+    - Ranks vendors based on price, payment terms, and delivery (VENDOR-LEVEL)
+    - Analyzes best vendor per material (LINE-ITEM LEVEL)
     - Generates AI-powered insights and recommendations
     
-    **Returns:** Vendor ranking + AI insights
+    **Returns:** Vendor ranking + Line-item analysis + AI insights
     """
     try:
         # 1. Fetch vendor quotations from database
@@ -230,31 +119,41 @@ def analyze_rfq(request: AnalyzeRFQRequest):
         
         print(f"✅ Fetched {len(raw_data)} quotation records")
         
-        # 2. Transform data to comparison format
+        # 2. Transform data to comparison format (VENDOR-LEVEL)
         vendors_data = db.transform_to_comparison_format(raw_data)
         print(f"✅ Transformed into {len(vendors_data)} vendors")
         
-        # 3. Calculate ranking
+        # 3. Calculate VENDOR-LEVEL ranking
         comparison_engine = VendorComparisonEngine(priority=request.priority.value)
         ranking = comparison_engine.rank_vendors(vendors_data)
-        print(f"✅ Ranking calculated with priority: {request.priority.value}")
+        print(f"✅ Vendor-level ranking calculated with priority: {request.priority.value}")
         
-        # 4. Generate AI insights
+        # 4. Calculate LINE-ITEM LEVEL analysis
+        line_item_engine = LineItemComparisonEngine(priority=request.priority.value)
+        line_item_data = line_item_engine.analyze_materials(raw_data)
+        print(f"✅ Line-item analysis completed for {len(line_item_data['materials'])} materials")
+        
+        # Convert to Pydantic model
+        line_item_analysis = LineItemAnalysis(**line_item_data)
+        
+        # 5. Generate AI insights (for both vendor-level AND line-item)
         ai_engine = AIInsightsEngine()
-        ai_insights = ai_engine.generate_insights(ranking, request.priority.value)
-        print(f"✅ AI insights generated")
+        ai_insights = ai_engine.generate_insights(ranking, request.priority.value, line_item_data)
+        print(f"✅ AI insights generated (vendor-level + line-item)")
         
-        # 5. Build response
+        # 6. Build response
         response = ComparisonResponse(
             rfq_no=request.rfq_no,
             plant_code=request.plant_code,
             priority=request.priority.value,
             ranking=ranking,
+            line_item_analysis=line_item_analysis,
             ai_insights=ai_insights,
             metadata={
                 "total_vendors": len(vendors_data),
+                "total_materials": len(line_item_data['materials']),
                 "analysis_date": datetime.now().isoformat(),
-                "total_materials": sum(len(v.get('materials', [])) for v in vendors_data)
+                "analysis_modes": ["vendor_level", "line_item_level"]
             }
         )
         
@@ -332,21 +231,16 @@ def analyze_manual(request: AnalyzeManualRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
+
 @app.get("/debug/env")
-def debug_environment():
+def debug_env():
     """Debug environment variables"""
     import os
-    
-    env_vars = {
-        "has_openrouter_key": bool(os.getenv("OPENROUTER_API_KEY")),
-        "openrouter_key_length": len(os.getenv("OPENROUTER_API_KEY", "")),
-        "llm_model": os.getenv("LLM_MODEL", "Not set"),
-        "db_server_set": bool(os.getenv("DB_SERVER")),
-        "render_environment": os.getenv("RENDER", "False"),
-        "all_env_keys": [k for k in os.environ.keys() if "KEY" in k or "SECRET" in k or "PASS" in k]
+    return {
+        "has_key": bool(os.getenv("OPENROUTER_API_KEY")),
+        "key_length": len(os.getenv("OPENROUTER_API_KEY", "")),
+        "model": os.getenv("LLM_MODEL", "not set")
     }
-    
-    return env_vars
 
 @app.get("/api/rfq/list", tags=["RFQ Management"])
 def list_recent_rfqs(plant_code: int = 1100, limit: int = 10):

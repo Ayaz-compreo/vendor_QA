@@ -97,7 +97,80 @@ class AIInsights(BaseModel):
     alternate_strategy: str = Field(..., description="Alternative procurement strategy or split award options")
     risk_consideration: str = Field(..., description="Risk factors and concerns to be aware of")
     project_impact: str = Field(..., description="Impact on project timeline, budget, and delivery")
+    line_item_insights: Optional[str] = Field(default="", description="Material-level analysis insights")
+    split_award_recommendation: Optional[str] = Field(default="", description="Split-award strategy recommendation")
     negotiation_tips: List[str] = Field(default_factory=list, description="Specific negotiation tactics")
+
+
+class VendorQuoteForMaterial(BaseModel):
+    """Single vendor's quote for a material"""
+    vendor_name: str
+    price: float
+    payment_terms_days: int
+    delivery_days: int
+    total_value: float
+    rank_for_this_material: int
+    rank_score: float = Field(..., description="Ranking score for this material")
+    is_best_price: bool
+    is_best_payment: bool
+    is_best_delivery: bool
+    price_difference_from_best: float
+    savings_vs_worst: float
+    vendor_email: str = ""
+    vendor_contact_person: str = ""
+    vendor_contact_phone: str = ""
+
+
+class RecommendedVendorForMaterial(BaseModel):
+    """Recommended vendor for a specific material"""
+    vendor_name: str
+    price: float
+    payment_terms_days: int
+    delivery_days: int
+    total_value: float
+    score: float
+    reason: str
+    savings: float
+    savings_percentage: float
+    alternative: Optional[Dict] = None
+
+
+class MaterialLineItem(BaseModel):
+    """Line-item analysis for a single material"""
+    mat_code: str
+    mat_text: str
+    qty: float
+    uom: str
+    vendor_quotes: List[VendorQuoteForMaterial]
+    recommended_vendor: RecommendedVendorForMaterial
+
+
+class VendorAllocation(BaseModel):
+    """Vendor allocation in split-award strategy"""
+    vendor_name: str
+    materials: List[str]  
+    material_codes: List[str]
+    total_value: float
+    material_count: int
+    percentage_of_order: float
+
+
+class SplitAwardStrategy(BaseModel):
+    """Split-award strategy recommendation"""
+    is_recommended: bool
+    total_cost_split: float
+    total_cost_single_vendor: float
+    total_savings: float
+    savings_percentage: float
+    vendor_count: int
+    vendor_allocation: List[VendorAllocation]
+    comparison_vs_single_vendor: Optional[Dict] = None
+
+
+class LineItemAnalysis(BaseModel):
+    """Complete line-item level analysis"""
+    materials: List[MaterialLineItem]
+    split_award_strategy: SplitAwardStrategy
 
 
 class ComparisonResponse(BaseModel):
@@ -106,6 +179,7 @@ class ComparisonResponse(BaseModel):
     plant_code: Optional[int] = None
     priority: str
     ranking: List[RankingResult]
+    line_item_analysis: Optional[LineItemAnalysis] = None
     ai_insights: AIInsights
     metadata: Dict = Field(default_factory=dict)
     

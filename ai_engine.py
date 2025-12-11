@@ -1,30 +1,28 @@
 """
 AI Engine - Generates insights and recommendations using LLM
 """
-import os
-from typing import List
-from openai import OpenAI
+from typing import List, Dict
 from models import RankingResult, AIInsights
-
+# REMOVE OpenAI and dotenv imports from here
 
 class AIInsightsEngine:
     """Generate AI-powered insights using LLM"""
-    
     def __init__(self):
         """Initialize AI engine with OpenRouter"""
+        from dotenv import load_dotenv
+        from openai import OpenAI  # Import HERE
         import os
         
+        load_dotenv()
+        
         self.api_key = os.getenv("OPENROUTER_API_KEY")
-        self.model = os.getenv("LLM_MODEL", "google/gemma-3-27b-it:free")
+        self.model = os.getenv("LLM_MODEL", "google/gemini-2.0-flash-exp:free")
         
         print(f"🔍 AI Engine Init: Key length = {len(self.api_key) if self.api_key else 0}")
         
         if self.api_key:
             try:
-                # MODERN PATTERN ONLY - No legacy fallbacks
-                from openai import OpenAI
-                
-                # SIMPLE initialization - let httpx handle proxies internally
+                # ULTRA MINIMAL - Only these 2 parameters
                 self.client = OpenAI(
                     api_key=self.api_key,
                     base_url="https://openrouter.ai/api/v1"
@@ -32,28 +30,29 @@ class AIInsightsEngine:
                 print("✅ OpenAI client initialized successfully")
                 
             except Exception as e:
-                print(f"❌ Failed to initialize OpenAI client: {e}")
-                print("⚠️ Falling back to default insights")
+                print(f"❌ Failed to initialize: {e}")
                 self.client = None
         else:
             self.client = None
             print("⚠️ No API key, using default insights")
+   
     
-    def generate_insights(self, ranking: List[RankingResult], priority: str) -> AIInsights:
+    def generate_insights(self, ranking: List[RankingResult], priority: str, line_item_data: Dict = None) -> AIInsights:
         """
-        Generate comprehensive AI insights with 4 detailed sections
+        Generate comprehensive AI insights with 4 detailed sections + line-item insights
         
         Args:
             ranking: List of ranked vendors
             priority: User's priority
+            line_item_data: Optional line-item analysis data
             
         Returns:
-            AIInsights object with 4 detailed sections + negotiation tips
+            AIInsights object with detailed sections + line-item insights
         """
         if not self.client:
             # Return default insights if client not initialized
             print("🔄 No OpenAI client, using default insights")
-            return self._default_insights(ranking, priority)
+            return self._default_insights(ranking, priority, line_item_data)
         
         try:
             print(f"🚀 Calling OpenRouter API with model: {self.model}")
@@ -63,12 +62,20 @@ class AIInsightsEngine:
             winner = ranking[0]
             second = ranking[1] if len(ranking) > 1 else None
             
-            # Generate all 4 sections using LLM
+            # Generate all sections using LLM
             primary_rec = self._generate_primary_recommendation(vendors_summary, winner, priority)
             alternate_strategy = self._generate_alternate_strategy(ranking, winner, second)
             risk_consideration = self._generate_risk_consideration(ranking, winner)
             project_impact = self._generate_project_impact(ranking, winner, priority)
             negotiation_tips = self._generate_negotiation_tips(ranking, priority)
+            
+            # Generate line-item insights if data provided
+            line_item_insights = ""
+            split_award_recommendation = ""
+            
+            if line_item_data and line_item_data.get('materials'):
+                line_item_insights = self._generate_line_item_insights(line_item_data)
+                split_award_recommendation = self._generate_split_award_recommendation(line_item_data)
             
             print("✅ Real AI insights generated from OpenRouter")
             return AIInsights(
@@ -76,51 +83,14 @@ class AIInsightsEngine:
                 alternate_strategy=alternate_strategy,
                 risk_consideration=risk_consideration,
                 project_impact=project_impact,
+                line_item_insights=line_item_insights,
+                split_award_recommendation=split_award_recommendation,
                 negotiation_tips=negotiation_tips
             )
             
         except Exception as e:
             print(f"❌ AI generation error: {str(e)}")
-            return self._default_insights(ranking, priority)
-    '''def generate_insights(self, ranking: List[RankingResult], priority: str) -> AIInsights:
-        """
-        Generate comprehensive AI insights with 4 detailed sections
-        
-        Args:
-            ranking: List of ranked vendors
-            priority: User's priority
-            
-        Returns:
-            AIInsights object with 4 detailed sections + negotiation tips
-        """
-        if not self.client:
-            # Return default insights if API key not configured
-            return self._default_insights(ranking, priority)
-        
-        try:
-            # Prepare vendor summary
-            vendors_summary = self._prepare_vendor_summary(ranking)
-            winner = ranking[0]
-            second = ranking[1] if len(ranking) > 1 else None
-            
-            # Generate all 4 sections using LLM
-            primary_rec = self._generate_primary_recommendation(vendors_summary, winner, priority)
-            alternate_strategy = self._generate_alternate_strategy(ranking, winner, second)
-            risk_consideration = self._generate_risk_consideration(ranking, winner)
-            project_impact = self._generate_project_impact(ranking, winner, priority)
-            negotiation_tips = self._generate_negotiation_tips(ranking, priority)
-            
-            return AIInsights(
-                primary_recommendation=primary_rec,
-                alternate_strategy=alternate_strategy,
-                risk_consideration=risk_consideration,
-                project_impact=project_impact,
-                negotiation_tips=negotiation_tips
-            )
-            
-        except Exception as e:
-            print(f"AI generation error: {str(e)}")
-            return self._default_insights(ranking, priority)'''
+            return self._default_insights(ranking, priority, line_item_data)
     
     def _prepare_vendor_summary(self, ranking: List[RankingResult]) -> str:
         """Prepare concise vendor summary for LLM"""
@@ -288,7 +258,7 @@ Start with "Choosing {winner.vendor_name}..."
         # Only return top 3 tips
         return tips[:3]
     
-    def _default_insights(self, ranking: List[RankingResult], priority: str) -> AIInsights:
+    def _default_insights(self, ranking: List[RankingResult], priority: str, line_item_data: Dict = None) -> AIInsights:
         """Generate default insights when AI is not available"""
         if not ranking:
             return AIInsights(
@@ -349,10 +319,144 @@ Start with "Choosing {winner.vendor_name}..."
         # Note about AI
         note = "\n\n*Note: AI-powered insights unavailable. Configure OPENROUTER_API_KEY in .env file for advanced recommendations with market intelligence and risk analysis.*"
         
+        # Generate line-item insights if data provided
+        line_item_insights = ""
+        split_award_recommendation = ""
+        
+        if line_item_data and line_item_data.get('materials'):
+            line_item_insights = self._default_line_item_insights(line_item_data)
+            split_award_recommendation = self._default_split_award_recommendation(line_item_data)
+        
         return AIInsights(
             primary_recommendation=primary_rec + note,
             alternate_strategy=alt_strategy,
             risk_consideration=risk,
             project_impact=impact,
+            line_item_insights=line_item_insights,
+            split_award_recommendation=split_award_recommendation,
             negotiation_tips=tips[:3]  # Top 3 tips
         )
+    
+    def _generate_line_item_insights(self, line_item_data: Dict) -> str:
+        """Generate AI insights for line-item analysis"""
+        materials = line_item_data.get('materials', [])
+        
+        if not materials:
+            return ""
+        
+        # Prepare summary
+        material_summaries = []
+        for mat in materials[:3]:  # Top 3 materials
+            recommended = mat['recommended_vendor']
+            material_summaries.append(
+                f"{mat['mat_code']} ({mat['mat_text']}): "
+                f"{recommended['vendor_name']} recommended - "
+                f"₹{recommended['price']:.0f}, "
+                f"{recommended['payment_terms_days']}d credit, "
+                f"{recommended['delivery_days']}d delivery. "
+                f"Savings: ₹{recommended['savings']:.0f} ({recommended['savings_percentage']:.1f}%)"
+            )
+        
+        prompt = f"""You are a procurement analyst. Analyze these material-level quotations:
+
+MATERIAL ANALYSIS:
+{chr(10).join(material_summaries)}
+
+Write concise line-item insights (max 100 words):
+1. Which materials show significant price variations
+2. Opportunities for optimization per material
+3. Risk of split awards (coordination complexity)
+
+Be specific with material codes and savings."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200
+            )
+            return response.choices[0].message.content.strip()
+        except:
+            return self._default_line_item_insights(line_item_data)
+    
+    def _generate_split_award_recommendation(self, line_item_data: Dict) -> str:
+        """Generate AI recommendation for split-award strategy"""
+        split_award = line_item_data.get('split_award_strategy', {})
+        
+        if not split_award.get('is_recommended'):
+            return "Split award not recommended - single vendor provides best overall value."
+        
+        savings = split_award.get('total_savings', 0)
+        savings_pct = split_award.get('savings_percentage', 0)
+        allocations = split_award.get('vendor_allocation', [])
+        
+        # Prepare allocation summary
+        allocation_summary = []
+        for alloc in allocations:
+            allocation_summary.append(
+                f"{alloc['vendor_name']}: {alloc['material_count']} materials, "
+                f"₹{alloc['total_value']:.0f} ({alloc['percentage_of_order']:.1f}%)"
+            )
+        
+        prompt = f"""You are a procurement analyst. Evaluate this split-award strategy:
+
+SPLIT AWARD:
+{chr(10).join(allocation_summary)}
+
+SAVINGS: ₹{savings:.0f} ({savings_pct:.1f}%)
+
+Write split-award recommendation (max 80 words):
+1. Recommend or advise against split award
+2. Explain benefits (cost savings, risk mitigation)
+3. Note coordination complexity if applicable
+4. Suggest implementation approach
+
+Be specific and actionable."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=150
+            )
+            return response.choices[0].message.content.strip()
+        except:
+            return self._default_split_award_recommendation(line_item_data)
+    
+    def _default_line_item_insights(self, line_item_data: Dict) -> str:
+        """Default line-item insights when AI unavailable"""
+        materials = line_item_data.get('materials', [])
+        
+        if not materials:
+            return ""
+        
+        insights = []
+        for mat in materials[:3]:
+            recommended = mat['recommended_vendor']
+            insights.append(
+                f"**{mat['mat_code']}**: {recommended['vendor_name']} offers {recommended['reason']} "
+                f"with ₹{recommended['savings']:.0f} savings ({recommended['savings_percentage']:.1f}%)"
+            )
+        
+        return " | ".join(insights)
+    
+    def _default_split_award_recommendation(self, line_item_data: Dict) -> str:
+        """Default split-award recommendation when AI unavailable"""
+        split_award = line_item_data.get('split_award_strategy', {})
+        
+        if not split_award.get('is_recommended'):
+            return "Split award not economically beneficial - recommend single vendor for operational simplicity."
+        
+        savings = split_award.get('total_savings', 0)
+        savings_pct = split_award.get('savings_percentage', 0)
+        allocations = split_award.get('vendor_allocation', [])
+        
+        vendor_summary = ", ".join([f"{a['vendor_name']} ({a['material_count']} items)" for a in allocations])
+        
+        return (
+            f"**Recommended:** Split award across {len(allocations)} vendors ({vendor_summary}). "
+            f"Total savings: ₹{savings:.0f} ({savings_pct:.1f}%) vs single vendor. "
+            f"Benefits: Cost optimization per material, reduced single-source risk. "
+            f"Consideration: Requires coordination with multiple vendors."
+        )
+
