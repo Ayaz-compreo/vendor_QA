@@ -332,7 +332,21 @@ def analyze_manual(request: AnalyzeManualRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
-
+@app.get("/debug/env")
+def debug_environment():
+    """Debug environment variables"""
+    import os
+    
+    env_vars = {
+        "has_openrouter_key": bool(os.getenv("OPENROUTER_API_KEY")),
+        "openrouter_key_length": len(os.getenv("OPENROUTER_API_KEY", "")),
+        "llm_model": os.getenv("LLM_MODEL", "Not set"),
+        "db_server_set": bool(os.getenv("DB_SERVER")),
+        "render_environment": os.getenv("RENDER", "False"),
+        "all_env_keys": [k for k in os.environ.keys() if "KEY" in k or "SECRET" in k or "PASS" in k]
+    }
+    
+    return env_vars
 
 @app.get("/api/rfq/list", tags=["RFQ Management"])
 def list_recent_rfqs(plant_code: int = 1100, limit: int = 10):
