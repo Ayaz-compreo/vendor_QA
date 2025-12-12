@@ -115,6 +115,18 @@ class LineItemComparisonEngine:
             if alt_row['is_best_delivery']: reasons.append(f"Fastest ({alt_row['delivery_days']}d)")
             alternative = {'vendor_name': alt_row['vendor_name'], 'price': float(alt_row['price']), 'reason': ' + '.join(reasons) if reasons else "Alternative"}
         
+        # ========== NEW: Calculate display score for recommended vendor ==========
+        total_quotes = len(df)
+        max_score = 100
+        min_score = 20
+        
+        if total_quotes > 1:
+            score_range = max_score - min_score
+            recommended_display_score = int(max_score - ((recommended['rank_for_this_material'] - 1) * (score_range / (total_quotes - 1))))
+        else:
+            recommended_display_score = max_score
+        # =========================================================================
+        
         return {
             'mat_code': mat_data['mat_code'],
             'mat_text': mat_data['mat_text'],
@@ -127,7 +139,8 @@ class LineItemComparisonEngine:
                 'payment_terms_days': int(recommended['payment_terms_days']),
                 'delivery_days': int(recommended['delivery_days']),
                 'total_value': float(recommended['total_value']),
-                'score': float(recommended['score']),  # FIXED!
+                'score': float(recommended['score']),
+                'display_score': recommended_display_score,  # NEW: Added display score
                 'reason': f"Best score ({recommended['score']:.1f})",
                 'savings': float(recommended['savings_vs_worst']),
                 'savings_percentage': float((worst_price - recommended['price']) / worst_price * 100) if worst_price > 0 else 0,
@@ -151,14 +164,14 @@ class LineItemComparisonEngine:
                 vendor_allocation[vendor_name] = {
                     'vendor_name': vendor_name,
                     'materials': [],
-                    'material_codes': [],  # FIXED!
+                    'material_codes': [],
                     'material_count': 0,
                     'total_value': 0,
                     'percentage_of_order': 0
                 }
             
             vendor_allocation[vendor_name]['materials'].append(material['mat_code'])
-            vendor_allocation[vendor_name]['material_codes'].append(material['mat_code'])  # FIXED!
+            vendor_allocation[vendor_name]['material_codes'].append(material['mat_code'])
             vendor_allocation[vendor_name]['material_count'] += 1
             vendor_allocation[vendor_name]['total_value'] += recommended['total_value']
             total_split_cost += recommended['total_value']
@@ -195,7 +208,7 @@ class LineItemComparisonEngine:
             "total_cost_single_vendor": round(best_single['total_cost'], 2),
             "total_savings": round(savings, 2),
             "savings_percentage": round(savings_pct, 2),
-            "vendor_count": len(vendor_allocation),  # FIXED!
+            "vendor_count": len(vendor_allocation),
             "vendor_allocation": list(vendor_allocation.values()),
             "comparison_vs_single_vendor": {
                 "single_vendor_option": best_single['vendor_name'],

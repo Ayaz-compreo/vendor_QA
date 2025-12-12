@@ -82,13 +82,34 @@ class RankingResult(BaseModel):
     """Vendor ranking result"""
     rank: int = Field(..., description="Vendor rank (1 = best)")
     vendor_name: str
-    score: float = Field(..., description="Weighted ranking score")
+    score: float = Field(..., description="Weighted ranking score (lower = better)")
+    display_score: int = Field(..., description="Display score 20-100 (higher = better)")  # NEW!
     price: float = Field(..., description="Price in INR")
     payment_terms_days: int = Field(..., description="Payment terms in days")
     delivery_days: int = Field(..., description="Delivery days")
     category_winners: List[str] = Field(default_factory=list, description="Categories where vendor wins")
     materials: Optional[List[MaterialInfo]] = Field(default_factory=list)
     contact: Optional[VendorContact] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "rank": 1,
+                "vendor_name": "ABC Industries",
+                "score": 4.5,
+                "display_score": 100,  # NEW!
+                "price": 850.00,
+                "payment_terms_days": 30,
+                "delivery_days": 7,
+                "category_winners": ["Best Price", "Fastest Delivery"],
+                "materials": [],
+                "contact": {
+                    "email": "contact@abc.com",
+                    "person": "John Doe",
+                    "phone": "+91-9876543210"
+                }
+            }
+        }
 
 
 class AIInsights(BaseModel):
@@ -129,6 +150,7 @@ class RecommendedVendorForMaterial(BaseModel):
     delivery_days: int
     total_value: float
     score: float
+    display_score: int = Field(default=100, description="Display score 20-100 (higher = better)")  # NEW!
     reason: str
     savings: float
     savings_percentage: float
@@ -194,6 +216,7 @@ class ComparisonResponse(BaseModel):
                         "rank": 1,
                         "vendor_name": "Beta Supplies",
                         "score": 6,
+                        "display_score": 100,
                         "price": 135.0,
                         "payment_terms_days": 60,
                         "delivery_days": 10,

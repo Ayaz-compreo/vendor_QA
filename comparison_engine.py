@@ -100,6 +100,18 @@ class VendorComparisonEngine:
             if row['vendor_name'] == best_payment_vendor:
                 category_winners.append("Best Payment Terms")
             
+            # ========== NEW: Calculate display score (20-100 range) ==========
+            total_vendors = len(df)
+            max_score = 100
+            min_score = 20
+            
+            if total_vendors > 1:
+                score_range = max_score - min_score
+                display_score = int(max_score - ((row['rank'] - 1) * (score_range / (total_vendors - 1))))
+            else:
+                display_score = max_score  # Single vendor gets 100
+            # =================================================================
+            
             # Convert materials list
             materials = [
                 MaterialInfo(
@@ -125,6 +137,7 @@ class VendorComparisonEngine:
                 rank=int(row['rank']),
                 vendor_name=row['vendor_name'],
                 score=float(row['rank_score']),
+                display_score=display_score,  # NEW: Added display score
                 price=float(row['price']),
                 payment_terms_days=int(row['payment_days']),
                 delivery_days=int(row['delivery_days']),
