@@ -2,6 +2,80 @@
 FastAPI Backend for Vendor Comparison System
 Integrates with Compreo ERP SQL Server database
 """
+# ================== ODBC DRIVER INSTALLATION AT RUNTIME ==================
+import os
+import sys
+import subprocess
+import platform
+
+def install_odbc_driver_at_runtime():
+    """Install ODBC Driver 17 for SQL Server when the app starts on Render."""
+    
+    # Skip on Windows (local development)
+    if platform.system() == "Windows":
+        print("⚠️ Windows detected - skipping runtime ODBC installation")
+        return True
+    
+    print("🔧 Starting ODBC Driver runtime installation...")
+    
+    try:
+        # Create a writable directory in /tmp
+        driver_dir = "/tmp/odbc_driver"
+        os.makedirs(driver_dir, exist_ok=True)
+        
+        print(f"📦 Downloading ODBC driver to {driver_dir}...")
+        
+        # Download ODBC driver .deb package
+        curl_cmd = [
+            'curl', '-L', '-o', f'{driver_dir}/msodbcsql.deb',
+            'https://packages.microsoft.com/debian/11/prod/pool/main/m/msodbcsql17/msodbcsql17_17.10.5.1-1_amd64.deb'
+        ]
+        subprocess.run(curl_cmd, check=True, capture_output=True)
+        
+        # Extract the .deb file
+        print("📂 Extracting ODBC driver package...")
+        subprocess.run(['ar', 'x', f'{driver_dir}/msodbcsql.deb'], 
+                      cwd=driver_dir, check=True, capture_output=True)
+        
+        # Extract the data.tar.xz
+        if os.path.exists(f'{driver_dir}/data.tar.xz'):
+            subprocess.run(['tar', '-xf', f'{driver_dir}/data.tar.xz'], 
+                          cwd=driver_dir, check=True, capture_output=True)
+        
+        # Set LD_LIBRARY_PATH to include our extracted driver
+        lib_path = f"{driver_dir}/opt/microsoft/msodbcsql17/lib64"
+        if os.path.exists(lib_path):
+            os.environ['LD_LIBRARY_PATH'] = lib_path + ':' + os.environ.get('LD_LIBRARY_PATH', '')
+            print(f"✅ ODBC driver installed at: {lib_path}")
+            
+            # Verify the driver file exists
+            driver_file = f"{lib_path}/libmsodbcsql-17.10.so.5.1"
+            if os.path.exists(driver_file):
+                print(f"✅ Driver file found: {driver_file}")
+                return True
+            else:
+                print(f"⚠️ Driver file not found at: {driver_file}")
+                return False
+        else:
+            print(f"⚠️ Library path not found: {lib_path}")
+            return False
+            
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Subprocess error: {e.stderr.decode() if e.stderr else str(e)}")
+        return False
+    except Exception as e:
+        print(f"❌ Runtime ODBC installation failed: {str(e)}")
+        return False
+
+# Install ODBC driver when module loads (on Render)
+ODBC_INSTALLED = install_odbc_driver_at_runtime()
+print(f"ODBC Runtime Installation: {'SUCCESS' if ODBC_INSTALLED else 'FAILED'}")
+# ================== END ODBC INSTALLATION ==================
+
+"""
+FastAPI Backend for Vendor Comparison System
+Integrates with Compreo ERP SQL Server database
+"""
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -114,7 +188,7 @@ def analyze_rfq(request: AnalyzeRFQRequest):
         if not raw_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No vendor quotations found for RFQ {request.rfq_no} at plant {request.plant_code}"
+                detail=f"No AI Analysis found for vendor quotation for RFQ {request.rfq_no} at plant {request.plant_code}"
             )
         
         print(f"✅ Fetched {len(raw_data)} quotation records")
