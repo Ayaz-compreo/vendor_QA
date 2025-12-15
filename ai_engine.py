@@ -35,8 +35,52 @@ class AIInsightsEngine:
         else:
             self.client = None
             print("⚠️ No API key, using default insights")
-   
-    
+    def _clean_markdown(self, text: str) -> str:
+        """
+        Remove markdown formatting from LLM response
+        
+        Removes:
+        - Bold (**text**)
+        - Italic (*text*)
+        - Headers (##, ###)
+        - Extra newlines
+        - Bullets and list markers (optional)
+        """
+        if not text:
+            return text
+        
+        import re
+        
+        # Remove bold markers (**text** or __text__)
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'__(.+?)__', r'\1', text)
+        
+        # Remove italic markers (*text* or _text_)
+        text = re.sub(r'\*(.+?)\*', r'\1', text)
+        text = re.sub(r'_(.+?)_', r'\1', text)
+        
+        # Remove markdown headers (##, ###, etc.)
+        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        
+        # Remove markdown bullet points (- item, * item)
+        # text = re.sub(r'^[\*\-]\s+', '', text, flags=re.MULTILINE)  # Uncomment if needed
+        
+        # Remove markdown links [text](url)
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        
+        # Remove markdown code blocks ```code```
+        text = re.sub(r'```[\s\S]*?```', '', text)
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        
+        # Remove extra whitespace
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r' {2,}', ' ', text)
+        
+        # Trim whitespace
+        text = text.strip()
+        
+        return text
+        
     def generate_insights(self, ranking: List[RankingResult], priority: str, line_item_data: Dict = None) -> AIInsights:
         """
         Generate comprehensive AI insights with 4 detailed sections + line-item insights
@@ -127,8 +171,9 @@ Be direct and confident. Start with: "{winner.vendor_name} offers..."
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200
         )
-        
-        return response.choices[0].message.content.strip()
+        return self._clean_markdown(response.choices[0].message.content.strip())
+
+        #return response.choices[0].message.content.strip()
     
     def _generate_alternate_strategy(self, ranking: List[RankingResult], winner: RankingResult, second: RankingResult) -> str:
         """Generate alternate strategy section"""
@@ -155,8 +200,9 @@ Start with: "Use a split award:" or "Consider {second.vendor_name} as..."
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150
         )
-        
-        return response.choices[0].message.content.strip()
+        return self._clean_markdown(response.choices[0].message.content.strip())
+
+        #return response.choices[0].message.content.strip()
     
     def _generate_risk_consideration(self, ranking: List[RankingResult], winner: RankingResult) -> str:
         """Generate risk consideration section"""
@@ -188,8 +234,9 @@ Start with the most important risk.
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150
         )
-        
-        return response.choices[0].message.content.strip()
+        return self._clean_markdown(response.choices[0].message.content.strip())
+
+        #return response.choices[0].message.content.strip()
     
     def _generate_project_impact(self, ranking: List[RankingResult], winner: RankingResult, priority: str) -> str:
         """Generate project impact section"""
@@ -226,7 +273,9 @@ Start with "Choosing {winner.vendor_name}..."
             max_tokens=150
         )
         
-        return response.choices[0].message.content.strip()
+        return self._clean_markdown(response.choices[0].message.content.strip())
+
+        #return response.choices[0].message.content.strip()
     
     def _generate_negotiation_tips(self, ranking: List[RankingResult], priority: str) -> List[str]:
         """Generate negotiation tips based on ranking"""
@@ -375,7 +424,9 @@ Be specific with material codes and savings."""
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=200
             )
-            return response.choices[0].message.content.strip()
+            return self._clean_markdown(response.choices[0].message.content.strip())
+
+            #return response.choices[0].message.content.strip()
         except:
             return self._default_line_item_insights(line_item_data)
     
@@ -419,7 +470,9 @@ Be specific and actionable."""
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=150
             )
-            return response.choices[0].message.content.strip()
+            return self._clean_markdown(response.choices[0].message.content.strip())
+
+            #return response.choices[0].message.content.strip()
         except:
             return self._default_split_award_recommendation(line_item_data)
     
