@@ -199,7 +199,108 @@ class VendorQuotationDB:
             result.append(vendor_data)
         
         return result
-    
+    def diagnose_missing_quotations(self, rfq_no: str, plant_code: int) -> Dict:
+        """
+        Diagnose why quotations are not found
+        
+        Returns detailed diagnostic information
+        """
+        diagnostics = {
+            "rfq_no": rfq_no,
+            "plant_code": plant_code,
+            "checks": {}
+        }
+        
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Check 1: Does RFQ exist in header table?
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM MM_PUR_VQUOT_H 
+                WHERE DOC_NO = ? AND PLANT_CODE = ?
+            """, (rfq_no, plant_code))
+            header_count = cursor.fetchone()[0]
+            diagnostics["checks"]["rfq_exists_in_header"] = header_count > 0
+            diagnostics["checks"]["vendor_count_in_header"] = header_count
+            
+            # Check 2: Does RFQ have line items?
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM MM_PUR_VQUOT_T 
+                WHERE DOC_NO = ? AND PLANT_CODE = ?
+            """, (rfq_no, plant_code))
+            line_count = cursor.fetchone()[0]
+            diagnostics["checks"]["has_line_items"] = line_count > 0
+            diagnostics["checks"]["line_item_count"] = line_count
+            
+            # Check 3: Get vendor names if header exists but no join results
+            if header_count > 0:
+                cursor.execute("""
+                    SELECT VENDOR_NO, VENDOR_NAME 
+                    FROM MM_PUR_VQUOT_H 
+                    WHERE DOC_NO = ? AND PLANT_CODE = ?
+                """, (rfq_no, plant_code))
+                vendors = [{"vendor_no": row[0], "vendor_name": row[1]} for row in cursor.fetchall()]
+                diagnostics["checks"]["vendors_in_header"] = vendors
+            
+            # Check 4: Check if materials exist in line items
+            if line_count > 0:
+                cursor.execute("""
+                    SELECT DISTINCT MAT_CODE, MAT_TEXT 
+                    FROM MM_PUR_VQUOT_T 
+                    WHERE DOC_NO = ? AND PLANT_CODE = ?
+                """, (rfq_no, plant_code))
+                materials = [{"mat_code": row[0], "mat_text": row[1]} for row in cursor.fetchall()]
+                diagnostics["checks"]["materials"] = materials
+            
+            # Check 5: Check if join would succeed
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM MM_PUR_VQUOT_T t
+                JOIN MM_PUR_VQUOT_H h 
+                    ON t.PLANT_CODE = h.PLANT_CODE 
+                    AND t.FYEAR = h.FYEAR 
+                    AND t.DOC_NO = h.DOC_NO
+                WHERE t.DOC_NO = ? AND t.PLANT_CODE = ?
+            """, (rfq_no, plant_code))
+            join_count = cursor.fetchone()[0]
+            diagnostics["checks"]["join_successful"] = join_count > 0
+            diagnostics["checks"]["joined_records"] = join_count
+            
+            cursor.close()
+            conn.close()
+            
+            # Generate user-friendly messages
+            diagnostics["possible_reasons"] = []
+            diagnostics["action_required"] = []
+            
+            if not diagnostics["checks"]["rfq_exists_in_header"]:
+                diagnostics["possible_reasons"].append(f"RFQ {rfq_no} does not exist in system for plant {plant_code}")
+                diagnostics["action_required"].append("Verify RFQ number is correct")
+            
+            if diagnostics["checks"]["rfq_exists_in_header"] and not diagnostics["checks"]["has_line_items"]:
+                diagnostics["possible_reasons"].append("RFQ exists but has no line items")
+                diagnostics["action_required"].append("Contact administrator to add materials to RFQ")
+            
+            if diagnostics["checks"]["rfq_exists_in_header"] and diagnostics["checks"]["has_line_items"] and not diagnostics["checks"]["join_successful"]:
+                diagnostics["possible_reasons"].append("Data mismatch between header and line items (FYEAR or DOC_NO mismatch)")
+                diagnostics["action_required"].append("Contact database administrator to fix data integrity")
+            
+            if diagnostics["checks"]["vendor_count_in_header"] == 0:
+                diagnostics["possible_reasons"].append("No vendors have submitted quotations yet")
+                diagnostics["action_required"].append("Wait for vendors to submit quotations")
+            
+            return diagnostics
+            
+        except Exception as e:
+            return {
+                "rfq_no": rfq_no,
+                "plant_code": plant_code,
+                "error": str(e),
+                "diagnostic_failed": True
+            }
     def _map_payment_term(self, pay_term_code: str) -> int:
         """
         Map payment term code to number of days

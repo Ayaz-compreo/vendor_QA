@@ -184,13 +184,22 @@ def analyze_rfq(request: AnalyzeRFQRequest):
         print(f"📊 Fetching quotations for RFQ: {request.rfq_no}, Plant: {request.plant_code}")
         
         raw_data = db.fetch_vendor_quotations(request.rfq_no, request.plant_code)
-        
+
         if not raw_data:
+            # Run diagnostics to find out why
+            diagnostics = db.diagnose_missing_quotations(request.rfq_no, request.plant_code)
+            
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No AI Analysis found for vendor quotation for RFQ {request.rfq_no} at plant {request.plant_code}"
+                status_code=404,
+                detail={
+                    "error": "No Vendor Quotations Found",
+                    "message": f"No vendor quotations found for RFQ {request.rfq_no} at plant {request.plant_code}",
+                    "rfq_no": request.rfq_no,
+                    "plant_code": request.plant_code,
+                    "diagnostics": diagnostics,
+                    "help": "Please check the details below and take appropriate action"
+                }
             )
-        
         print(f"✅ Fetched {len(raw_data)} quotation records")
         
         # 2. Transform data to comparison format (VENDOR-LEVEL)
