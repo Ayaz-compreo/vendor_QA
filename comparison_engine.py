@@ -39,6 +39,7 @@ class VendorComparisonEngine:
             
             comparison_data.append({
                 'vendor_name': vendor_name,
+                'vendor_no': vendor.get('vendor_no', ''), 
                 'price': params.get('price', 0),
                 'payment_days': params.get('payment_terms_days', 0),
                 'delivery_days': params.get('delivery_days', 0),
@@ -136,6 +137,7 @@ class VendorComparisonEngine:
             result = RankingResult(
                 rank=int(row['rank']),
                 vendor_name=row['vendor_name'],
+                vendor_no=row.get('vendor_no', ''),  
                 score=float(row['rank_score']),
                 display_score=display_score,  # NEW: Added display score
                 price=float(row['price']),

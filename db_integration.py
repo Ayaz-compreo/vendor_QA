@@ -92,6 +92,7 @@ class VendorQuotationDB:
         """
         query = """
         SELECT 
+            h.VENDOR_NO,       
             h.VENDOR_NAME,
             h.PAY_TERM,
             h.VENDOR_EMAIL,
@@ -162,6 +163,8 @@ class VendorQuotationDB:
             if vendor_name not in vendors:
                 vendors[vendor_name] = {
                     'vendor_name': vendor_name,
+                    'vendor_no': record.get('VENDOR_NO', ''),  # ← ADD THIS LINE!
+
                     'parameters': {
                         'price': 0.0,  # Will calculate average
                         'payment_terms_days': self._map_payment_term(record['PAY_TERM']),

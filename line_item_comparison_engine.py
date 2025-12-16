@@ -56,6 +56,7 @@ class LineItemComparisonEngine:
             
             materials[mat_code]['vendor_quotes'].append({
                 'vendor_name': record['VENDOR_NAME'],
+                'vendor_no': record.get('VENDOR_NO', ''), 
                 'price': float(record['BASIC_PRICE']),
                 'payment_terms_days': self._map_payment_term(record['PAY_TERM']),
                 'delivery_days': int(record['DELIVERY_DAYS']),
@@ -135,6 +136,7 @@ class LineItemComparisonEngine:
             'vendor_quotes': df.to_dict('records'),
             'recommended_vendor': {
                 'vendor_name': recommended['vendor_name'],
+                'vendor_no': recommended.get('vendor_no', ''), 
                 'price': float(recommended['price']),
                 'payment_terms_days': int(recommended['payment_terms_days']),
                 'delivery_days': int(recommended['delivery_days']),

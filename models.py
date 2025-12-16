@@ -82,6 +82,7 @@ class RankingResult(BaseModel):
     """Vendor ranking result"""
     rank: int = Field(..., description="Vendor rank (1 = best)")
     vendor_name: str
+    vendor_no: str = Field(..., description="Vendor number/code")  # ADD THIS!
     score: float = Field(..., description="Weighted ranking score (lower = better)")
     display_score: int = Field(..., description="Display score 20-100 (higher = better)")  # NEW!
     price: float = Field(..., description="Price in INR")
@@ -126,6 +127,7 @@ class AIInsights(BaseModel):
 class VendorQuoteForMaterial(BaseModel):
     """Single vendor's quote for a material"""
     vendor_name: str
+    vendor_no: str = "" 
     price: float
     payment_terms_days: int
     delivery_days: int
@@ -145,6 +147,7 @@ class VendorQuoteForMaterial(BaseModel):
 class RecommendedVendorForMaterial(BaseModel):
     """Recommended vendor for a specific material"""
     vendor_name: str
+    vendor_no: str = ""  
     price: float
     payment_terms_days: int
     delivery_days: int
