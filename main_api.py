@@ -97,8 +97,10 @@ from models import (
     LineItemAnalysis
 )
 from db_integration import VendorQuotationDB
-from comparison_engine import VendorComparisonEngine
-from ai_engine import AIInsightsEngine
+#from comparison_engine import VendorComparisonEngine
+#from ai_engine import AIInsightsEngine
+from comparison_engine_enhanced import VendorComparisonEngine
+from ai_engine_enhanced import AIInsightsEngineEnhanced
 from line_item_comparison_engine import LineItemComparisonEngine
 from line_item_comparison_engine import LineItemComparisonEngine
 
@@ -170,14 +172,14 @@ def health_check():
 )
 def analyze_rfq(request: AnalyzeRFQRequest):
     """
-    Fetch vendor quotations from database and perform comparison analysis
+    Fetch vendor quotations from database and perform enhanced comparison analysis
     
     - Fetches data from MM_PUR_VQUOT_H and MM_PUR_VQUOT_T tables
-    - Ranks vendors based on price, payment terms, and delivery (VENDOR-LEVEL)
+    - Ranks vendors with dimension-level scoring (VENDOR-LEVEL)
     - Analyzes best vendor per material (LINE-ITEM LEVEL)
-    - Generates AI-powered insights and recommendations
+    - Generates structured AI insights and recommendations
     
-    **Returns:** Vendor ranking + Line-item analysis + AI insights
+    **Returns:** Enhanced vendor analysis + Recommendations + Structured insights + Line-item analysis
     """
     try:
         # 1. Fetch vendor quotations from database
@@ -206,10 +208,11 @@ def analyze_rfq(request: AnalyzeRFQRequest):
         vendors_data = db.transform_to_comparison_format(raw_data)
         print(f"✅ Transformed into {len(vendors_data)} vendors")
         
-        # 3. Calculate VENDOR-LEVEL ranking
+        # 3. Calculate VENDOR-LEVEL ranking with dimension scores
+        from comparison_engine_enhanced import VendorComparisonEngine
         comparison_engine = VendorComparisonEngine(priority=request.priority.value)
-        ranking = comparison_engine.rank_vendors(vendors_data)
-        print(f"✅ Vendor-level ranking calculated with priority: {request.priority.value}")
+        vendor_analysis = comparison_engine.rank_vendors(vendors_data)
+        print(f"✅ Vendor-level analysis with dimension scores calculated")
         
         # 4. Calculate LINE-ITEM LEVEL analysis
         line_item_engine = LineItemComparisonEngine(priority=request.priority.value)
@@ -219,24 +222,31 @@ def analyze_rfq(request: AnalyzeRFQRequest):
         # Convert to Pydantic model
         line_item_analysis = LineItemAnalysis(**line_item_data)
         
-        # 5. Generate AI insights (for both vendor-level AND line-item)
-        ai_engine = AIInsightsEngine()
-        ai_insights = ai_engine.generate_insights(ranking, request.priority.value, line_item_data)
-        print(f"✅ AI insights generated (vendor-level + line-item)")
+        # 5. Generate structured AI insights and recommendations
+        from ai_engine_enhanced import AIInsightsEngineEnhanced
+        ai_engine = AIInsightsEngineEnhanced()
+        recommendations, structured_insights, ai_insights = ai_engine.generate_structured_analysis(
+            vendor_analysis, 
+            request.priority.value, 
+            line_item_data
+        )
+        print(f"✅ Generated {len(recommendations)} recommendations and {len(structured_insights)} structured insights")
         
-        # 6. Build response
+        # 6. Build enhanced response
         response = ComparisonResponse(
             rfq_no=request.rfq_no,
             plant_code=request.plant_code,
             priority=request.priority.value,
-            ranking=ranking,
+            vendor_analysis=vendor_analysis,  # NEW: Enhanced vendor analysis
+            recommendations=recommendations,   # NEW: Structured recommendations
+            structured_insights=structured_insights,  # NEW: Structured insights
             line_item_analysis=line_item_analysis,
-            ai_insights=ai_insights,
+            ai_insights=ai_insights,  # Legacy, for backward compatibility
             metadata={
                 "total_vendors": len(vendors_data),
                 "total_materials": len(line_item_data['materials']),
                 "analysis_date": datetime.now().isoformat(),
-                "analysis_modes": ["vendor_level", "line_item_level"]
+                "analysis_modes": ["vendor_level", "line_item_level", "dimension_level"]
             }
         )
         
@@ -251,7 +261,6 @@ def analyze_rfq(request: AnalyzeRFQRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
-
 
 @app.post(
     "/api/vendor-comparison/analyze-manual",
@@ -268,7 +277,7 @@ def analyze_manual(request: AnalyzeManualRequest):
     - Comparing vendors from external sources
     - Quick what-if analysis
     
-    **Returns:** Vendor ranking + AI insights
+    **Returns:** Enhanced vendor analysis + AI insights
     """
     try:
         # Convert manual entries to comparison format
@@ -276,6 +285,7 @@ def analyze_manual(request: AnalyzeManualRequest):
         for vendor in request.vendors:
             vendors_data.append({
                 'vendor_name': vendor.vendor_name,
+                'vendor_no': '',  # No vendor number for manual entry
                 'parameters': {
                     'price': vendor.price,
                     'payment_terms_days': vendor.payment_terms_days,
@@ -285,23 +295,30 @@ def analyze_manual(request: AnalyzeManualRequest):
                 'contact': {}
             })
         
-        # Calculate ranking
+        # Calculate enhanced vendor analysis
         comparison_engine = VendorComparisonEngine(priority=request.priority.value)
-        ranking = comparison_engine.rank_vendors(vendors_data)
+        vendor_analysis = comparison_engine.rank_vendors(vendors_data)
         
-        # Generate AI insights
-        ai_engine = AIInsightsEngine()
-        ai_insights = ai_engine.generate_insights(ranking, request.priority.value)
+        # Generate structured AI insights
+        ai_engine = AIInsightsEngineEnhanced()
+        recommendations, structured_insights, ai_insights = ai_engine.generate_structured_analysis(
+            vendor_analysis, 
+            request.priority.value, 
+            None  # No line-item data for manual entry
+        )
         
-        # Build response
+        # Build enhanced response
         response = ComparisonResponse(
             priority=request.priority.value,
-            ranking=ranking,
+            vendor_analysis=vendor_analysis,  # NEW: Enhanced
+            recommendations=recommendations,   # NEW
+            structured_insights=structured_insights,  # NEW
             ai_insights=ai_insights,
             metadata={
                 "total_vendors": len(vendors_data),
                 "analysis_date": datetime.now().isoformat(),
-                "source": "manual_entry"
+                "source": "manual_entry",
+                "analysis_modes": ["vendor_level", "dimension_level"]
             }
         )
         
@@ -314,6 +331,7 @@ def analyze_manual(request: AnalyzeManualRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis failed: {str(e)}"
         )
+
 
 @app.get("/debug/env")
 def debug_env():

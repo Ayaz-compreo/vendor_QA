@@ -78,54 +78,13 @@ class VendorContact(BaseModel):
     phone: Optional[str] = ""
 
 
-class DimensionScore(BaseModel):
-    """Individual dimension score for a vendor"""
-    dimension_code: str = Field(..., description="PRICE, DELIVERY, PAYMENT_TERMS, VENDOR_HISTORY, QUALITY_COMP, CAPACITY")
-    score: Optional[float] = Field(None, description="Numeric score 0-10 (for quantitative dimensions)")
-    bool_value: Optional[bool] = Field(None, description="True/False (for boolean dimensions)")
-    confidence: int = Field(..., description="Confidence level 0-100")
-    evidence_text: str = Field(..., description="Evidence/reasoning for this score")
-
-
-class CategoryWinnerDetail(BaseModel):
-    """Category winner badge with dimension mapping"""
-    dimension_code: str = Field(..., description="PRICE, DELIVERY, PAYMENT_TERMS")
-    category_label: str = Field(..., description="Display text like 'Best Price'")
-    badge_color: str = Field(default="GREEN", description="GREEN, BLUE, ORANGE, PURPLE")
-    is_displayed: bool = Field(default=True)
-
-
-class VendorAnalysis(BaseModel):
-    """Enhanced vendor analysis with dimension scores"""
-    rank: int = Field(..., description="Vendor rank (1 = best)")
-    vendor_name: str
-    vendor_no: str = Field(default="", description="Vendor number/code")
-    overall_score: float = Field(..., description="Overall score 0-10 (higher = better)")
-    quoted_amount: float = Field(..., description="Total quoted amount in INR")
-    
-    # Dimension-level scores
-    dimension_scores: List[DimensionScore] = Field(default_factory=list, description="Individual dimension scores")
-    
-    # Category winners with dimension mapping
-    category_winners: List[CategoryWinnerDetail] = Field(default_factory=list, description="Category winner badges")
-    
-    # Existing fields for backward compatibility
-    score: float = Field(..., description="Weighted ranking score (lower = better)")
-    display_score: int = Field(..., description="Display score 20-100 (higher = better)")
-    price: float = Field(..., description="Average price in INR")
-    payment_terms_days: int = Field(..., description="Payment terms in days")
-    delivery_days: int = Field(..., description="Delivery days")
-    materials: Optional[List[MaterialInfo]] = Field(default_factory=list)
-    contact: Optional[VendorContact] = None
-
-
 class RankingResult(BaseModel):
-    """DEPRECATED: Legacy vendor ranking result - use VendorAnalysis instead"""
+    """Vendor ranking result"""
     rank: int = Field(..., description="Vendor rank (1 = best)")
     vendor_name: str
-    vendor_no: str = Field(default="", description="Vendor number/code")
+    vendor_no: str = Field(..., description="Vendor number/code")  # ADD THIS!
     score: float = Field(..., description="Weighted ranking score (lower = better)")
-    display_score: int = Field(..., description="Display score 20-100 (higher = better)")
+    display_score: int = Field(..., description="Display score 20-100 (higher = better)")  # NEW!
     price: float = Field(..., description="Price in INR")
     payment_terms_days: int = Field(..., description="Payment terms in days")
     delivery_days: int = Field(..., description="Delivery days")
@@ -138,9 +97,8 @@ class RankingResult(BaseModel):
             "example": {
                 "rank": 1,
                 "vendor_name": "ABC Industries",
-                "vendor_no": "1000100008",  # ← NEW!
                 "score": 4.5,
-                "display_score": 100,
+                "display_score": 100,  # NEW!
                 "price": 850.00,
                 "payment_terms_days": 30,
                 "delivery_days": 7,
@@ -153,28 +111,6 @@ class RankingResult(BaseModel):
                 }
             }
         }
-
-
-class StructuredRecommendation(BaseModel):
-    """Structured recommendation with type and vendor linkage"""
-    recommendation_type: str = Field(..., description="PRIMARY, ALTERNATE, SPLIT_AWARD")
-    vendor_no: Optional[str] = Field(None, description="Recommended vendor number")
-    vendor_name: Optional[str] = Field(None, description="Recommended vendor name")
-    summary_text: str = Field(..., description="Recommendation summary")
-    key_benefits: List[str] = Field(default_factory=list, description="Key benefits of this recommendation")
-    negotiation_tips_json: Optional[Dict] = Field(None, description="Structured negotiation tips")
-    risk_notes_json: Optional[Dict] = Field(None, description="Structured risk notes")
-
-
-class StructuredInsight(BaseModel):
-    """Structured insight with type and ordering"""
-    insight_type: str = Field(..., description="PRIMARY_REC, ALTERNATE, NEGOTIATION, RISK, IMPACT, LINE_ITEM")
-    insight_title: str = Field(..., description="Insight section title")
-    insight_text: str = Field(..., description="Insight content text")
-    insight_order: int = Field(..., description="Display order")
-    insight_json: Optional[Dict] = Field(None, description="Structured JSON data for the insight")
-    rfq_line_item_no: Optional[int] = Field(None, description="Line item number if LINE_ITEM type")
-    material_code: Optional[str] = Field(None, description="Material code if LINE_ITEM type")
 
 
 class AIInsights(BaseModel):
@@ -191,7 +127,7 @@ class AIInsights(BaseModel):
 class VendorQuoteForMaterial(BaseModel):
     """Single vendor's quote for a material"""
     vendor_name: str
-    vendor_no: str = ""  # ← NEW!
+    vendor_no: str = "" 
     price: float
     payment_terms_days: int
     delivery_days: int
@@ -211,13 +147,13 @@ class VendorQuoteForMaterial(BaseModel):
 class RecommendedVendorForMaterial(BaseModel):
     """Recommended vendor for a specific material"""
     vendor_name: str
-    vendor_no: str = ""  # ← NEW!
+    vendor_no: str = ""  
     price: float
     payment_terms_days: int
     delivery_days: int
     total_value: float
     score: float
-    display_score: int = Field(default=100, description="Display score 20-100 (higher = better)")
+    display_score: int = Field(default=100, description="Display score 20-100 (higher = better)")  # NEW!
     reason: str
     savings: float
     savings_percentage: float
@@ -263,17 +199,11 @@ class LineItemAnalysis(BaseModel):
 
 
 class ComparisonResponse(BaseModel):
-    """Enhanced response model for vendor comparison with dimension scores"""
+    """Response model for vendor comparison"""
     rfq_no: Optional[str] = None
     plant_code: Optional[int] = None
     priority: str
-    
-    # New enhanced structure
-    vendor_analysis: List[VendorAnalysis] = Field(..., description="Enhanced vendor analysis with dimension scores")
-    recommendations: List[StructuredRecommendation] = Field(default_factory=list, description="Structured recommendations")
-    structured_insights: List[StructuredInsight] = Field(default_factory=list, description="Structured insights array")
-    
-    # Keep existing fields
+    ranking: List[RankingResult]
     line_item_analysis: Optional[LineItemAnalysis] = None
     ai_insights: AIInsights
     metadata: Dict = Field(default_factory=dict)
@@ -288,7 +218,6 @@ class ComparisonResponse(BaseModel):
                     {
                         "rank": 1,
                         "vendor_name": "Beta Supplies",
-                        "vendor_no": "1000100008",
                         "score": 6,
                         "display_score": 100,
                         "price": 135.0,
