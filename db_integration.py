@@ -339,10 +339,10 @@ class VendorQuotationDB:
 if __name__ == "__main__":
     # Test the database connection
     db = VendorQuotationDB(
-        server="20.204.64.39,14333",
-        database="sit-cmp-projectsystems",
-        username="ayaz@cmp",
-        password="ayaz@cmp123"
+        server="148.113.49.104,1433",
+        database="dev-cmp-ps",
+        username="ayaz",
+        password="cmpovh@765"
     )
     
     # Test connection
