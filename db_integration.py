@@ -168,7 +168,7 @@ class VendorQuotationDB:
             ON t.PLANT_CODE = h.PLANT_CODE 
             AND t.FYEAR = h.FYEAR 
             AND t.DOC_NO = h.DOC_NO
-        WHERE t.DOC_NO = ? 
+        WHERE h.RFQ_NO = ?       
             AND t.PLANT_CODE = ?
         ORDER BY t.MAT_CODE, t.BASIC_PRICE
         """
@@ -332,7 +332,7 @@ class VendorQuotationDB:
             cursor.execute("""
                 SELECT COUNT(*) 
                 FROM MM_PUR_VQUOT_H 
-                WHERE DOC_NO = ? AND PLANT_CODE = ?
+                WHERE RFQ_NO  = ? AND PLANT_CODE = ?
             """, (rfq_no, plant_code))
             header_count = cursor.fetchone()[0]
             diagnostics["checks"]["rfq_exists_in_header"] = header_count > 0
@@ -342,7 +342,7 @@ class VendorQuotationDB:
             cursor.execute("""
                 SELECT COUNT(*) 
                 FROM MM_PUR_VQUOT_T 
-                WHERE DOC_NO = ? AND PLANT_CODE = ?
+                WHERE RFQ_NO  = ? AND PLANT_CODE = ?
             """, (rfq_no, plant_code))
             line_count = cursor.fetchone()[0]
             diagnostics["checks"]["has_line_items"] = line_count > 0
@@ -353,7 +353,7 @@ class VendorQuotationDB:
                 cursor.execute("""
                     SELECT VENDOR_NO, VENDOR_NAME 
                     FROM MM_PUR_VQUOT_H 
-                    WHERE DOC_NO = ? AND PLANT_CODE = ?
+                    WHERE RFQ_NO  = ? AND PLANT_CODE = ?
                 """, (rfq_no, plant_code))
                 vendors = [{"vendor_no": row[0], "vendor_name": row[1]} for row in cursor.fetchall()]
                 diagnostics["checks"]["vendors_in_header"] = vendors
@@ -363,7 +363,7 @@ class VendorQuotationDB:
                 cursor.execute("""
                     SELECT DISTINCT MAT_CODE, MAT_TEXT 
                     FROM MM_PUR_VQUOT_T 
-                    WHERE DOC_NO = ? AND PLANT_CODE = ?
+                    WHERE RFQ_NO  = ? AND PLANT_CODE = ?
                 """, (rfq_no, plant_code))
                 materials = [{"mat_code": row[0], "mat_text": row[1]} for row in cursor.fetchall()]
                 diagnostics["checks"]["materials"] = materials
@@ -376,7 +376,7 @@ class VendorQuotationDB:
                     ON t.PLANT_CODE = h.PLANT_CODE 
                     AND t.FYEAR = h.FYEAR 
                     AND t.DOC_NO = h.DOC_NO
-                WHERE t.DOC_NO = ? AND t.PLANT_CODE = ?
+                WHERE t.RFQ_NO  = ? AND t.PLANT_CODE = ?
             """, (rfq_no, plant_code))
             join_count = cursor.fetchone()[0]
             diagnostics["checks"]["join_successful"] = join_count > 0
