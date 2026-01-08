@@ -79,7 +79,7 @@ class VendorQuotationDB:
         """Create and return database connection"""
         return pyodbc.connect(self.connection_string)
     '''
-    def fetch_vendor_quotations(self, rfq_no: str, plant_code: int) -> List[Dict]:
+    '''def fetch_vendor_quotations(self, rfq_no: str, plant_code: int) -> List[Dict]:
         """
         Fetch all vendor quotations for a given RFQ
         
@@ -125,10 +125,70 @@ class VendorQuotationDB:
             for row in cursor.fetchall():
                 record = dict(zip(columns, row))
                 # Convert Decimal to float for JSON serialization
-                if isinstance(record.get('BASIC_PRICE'), Decimal):
-                    record['BASIC_PRICE'] = float(record['BASIC_PRICE'])
-                if isinstance(record.get('QTY'), Decimal):
-                    record['QTY'] = float(record['QTY'])
+                for key, value in record.items():
+                    if isinstance(value, Decimal):
+                        record[key] = float(value)
+    
+                results.append(record)
+            
+            cursor.close()
+            conn.close()
+            
+            return results
+            
+        except Exception as e:
+            raise Exception(f"Database error: {str(e)}")'''
+    def fetch_vendor_quotations(self, rfq_no: str, plant_code: int) -> List[Dict]:
+        """
+        Fetch all vendor quotations for a given RFQ
+        
+        Args:
+            rfq_no: RFQ number (e.g., 'RFQ-2024-1001')
+            plant_code: Plant code (e.g., 1100)
+            
+        Returns:
+            List of vendor quotation records
+        """
+        query = """
+        SELECT 
+            h.VENDOR_NO,       
+            h.VENDOR_NAME,
+            h.PAY_TERM,
+            h.VENDOR_EMAIL,
+            h.VENDOR_CONTACT_PERSON,
+            h.VENDOR_CONTACT_PHONE,
+            t.MAT_CODE,
+            t.MAT_TEXT,
+            t.BASIC_PRICE,
+            t.DELIVERY_DAYS,
+            t.QTY,
+            t.UOM
+        FROM MM_PUR_VQUOT_T t
+        JOIN MM_PUR_VQUOT_H h 
+            ON t.PLANT_CODE = h.PLANT_CODE 
+            AND t.FYEAR = h.FYEAR 
+            AND t.DOC_NO = h.DOC_NO
+        WHERE t.DOC_NO = ? 
+            AND t.PLANT_CODE = ?
+        ORDER BY t.MAT_CODE, t.BASIC_PRICE
+        """
+        
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, (rfq_no, plant_code))
+            
+            columns = [column[0] for column in cursor.description]
+            results = []
+            
+            for row in cursor.fetchall():
+                record = dict(zip(columns, row))
+                
+                # Convert ALL Decimal fields to float
+                for key, value in record.items():
+                    if isinstance(value, Decimal):
+                        record[key] = float(value)
+                
                 results.append(record)
             
             cursor.close()
@@ -139,7 +199,7 @@ class VendorQuotationDB:
         except Exception as e:
             raise Exception(f"Database error: {str(e)}")
     
-    def transform_to_comparison_format(self, raw_data: List[Dict]) -> List[Dict]:
+    '''def transform_to_comparison_format(self, raw_data: List[Dict]) -> List[Dict]:
         """
         Transform raw database records into format expected by comparison system
         
@@ -182,8 +242,8 @@ class VendorQuotationDB:
             vendors[vendor_name]['materials'].append({
                 'mat_code': record['MAT_CODE'],
                 'mat_text': record['MAT_TEXT'],
-                'price': record['BASIC_PRICE'],
-                'qty': record['QTY'],
+                'price': float(record['BASIC_PRICE']) if record['BASIC_PRICE'] is not None else 0.0,
+                'qty': float(record['QTY']) if record['QTY'] is not None else 0.0,
                 'uom': record['UOM']
             })
         
@@ -196,6 +256,59 @@ class VendorQuotationDB:
             avg_price = total_value / total_qty if total_qty > 0 else 0
             
             vendor_data['parameters']['price'] = round(avg_price, 2)
+            result.append(vendor_data)
+        
+        return result'''
+    def transform_to_comparison_format(self, raw_data: List[Dict]) -> List[Dict]:
+        """
+        Transform raw database records into format expected by comparison system
+        
+        Groups by vendor and aggregates material prices
+        """
+        if not raw_data:
+            return []
+        
+        # Group by vendor
+        vendors = {}
+        
+        for record in raw_data:
+            vendor_name = record['VENDOR_NAME']
+            
+            if vendor_name not in vendors:
+                vendors[vendor_name] = {
+                    'vendor_name': vendor_name,
+                    'vendor_no': record.get('VENDOR_NO', ''),
+                    'parameters': {
+                        'price': 0.0,
+                        'payment_terms_days': self._map_payment_term(record['PAY_TERM']),
+                        'delivery_days': int(record['DELIVERY_DAYS']) if record['DELIVERY_DAYS'] else 0
+                    },
+                    'materials': [],
+                    'contact': {
+                        'email': record.get('VENDOR_EMAIL', ''),
+                        'person': record.get('VENDOR_CONTACT_PERSON', ''),
+                        'phone': record.get('VENDOR_CONTACT_PHONE', '')
+                    }
+                }
+            
+            # Add material (ensure float types)
+            vendors[vendor_name]['materials'].append({
+                'mat_code': record['MAT_CODE'],
+                'mat_text': record['MAT_TEXT'],
+                'price': float(record['BASIC_PRICE']) if record['BASIC_PRICE'] is not None else 0.0,
+                'qty': float(record['QTY']) if record['QTY'] is not None else 0.0,
+                'uom': record['UOM']
+            })
+        
+        # Calculate average price per vendor
+        result = []
+        for vendor_name, vendor_data in vendors.items():
+            # Calculate weighted average price (ensure float operations)
+            total_value = sum(float(m['price']) * float(m['qty']) for m in vendor_data['materials'])
+            total_qty = sum(float(m['qty']) for m in vendor_data['materials'])
+            avg_price = total_value / total_qty if total_qty > 0 else 0.0
+            
+            vendor_data['parameters']['price'] = round(float(avg_price), 2)
             result.append(vendor_data)
         
         return result
