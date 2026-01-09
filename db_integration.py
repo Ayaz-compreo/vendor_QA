@@ -425,6 +425,13 @@ class VendorQuotationDB:
             Number of days
         """
         payment_mapping = {
+            '00': 0,    # Immediate payment
+            '01': 90,   # 90 Days
+            '02': 30,   # 30 Days
+            '03': 45,   # 45 days from invoice
+            '04': 60,   # 60 Days
+            '05': 90,   # 90 Days from invoice
+            
             '000': 0,    # Advance payment
             '015': 15,   # 15 days credit
             '030': 30,   # 30 days credit
