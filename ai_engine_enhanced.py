@@ -410,7 +410,10 @@ class AIInsightsEngineEnhanced:
         text = re.sub(r'^\*+\s*', '', text)  # Leading
         text = re.sub(r'\s*\*+$', '', text)  # Trailing
         text = re.sub(r'\n\*+\s*\n', '\n\n', text)  # Asterisks on their own line
-        
+        # Remove standalone asterisks
+        text = re.sub(r'^\*+\s*', '', text)
+        text = re.sub(r'\s*\*+$', '', text)
+        text = re.sub(r'\n\*+\s*\n', '\n\n', text)
         # Clean whitespace
         text = re.sub(r'\n{3,}', '\n\n', text)
         text = re.sub(r' {2,}', ' ', text)

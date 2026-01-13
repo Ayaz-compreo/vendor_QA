@@ -222,5 +222,10 @@ class LineItemComparisonEngine:
         }
     
     def _map_payment_term(self, pay_term_code: str) -> int:
-        mapping = {'000': 0, '015': 15, '030': 30, '060': 60, '090': 90}
+        mapping = {'00': 0,    
+        '01': 90,  
+        '02': 30,   
+        '03': 45,   
+        '04': 60, 
+        '05': 90,'000': 0, '015': 15, '030': 30, '060': 60, '090': 90}
         return mapping.get(pay_term_code, 0)
