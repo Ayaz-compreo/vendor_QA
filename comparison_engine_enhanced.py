@@ -409,7 +409,7 @@ class VendorComparisonEngine:
             (history_score / 10) * 0.10  # Fixed 10% for history
                 ) * 10 
             
-            df.at[idx, 'overall_score'] = round(overall_score, 1)
+            df.at[idx, 'overall_score'] = round(overall_score, 2)
         
         return df
     
