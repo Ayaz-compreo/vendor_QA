@@ -405,8 +405,7 @@ class VendorComparisonEngine:
             overall_score = (
             (price_score / 10) * self.weights['price'] +
             (delivery_score / 10) * self.weights['delivery'] +
-            (payment_score / 10) * self.weights['payment_terms'] +
-            (history_score / 10) * 0.10  # Fixed 10% for history
+            (payment_score / 10) * self.weights['payment_terms']  # Fixed 10% for history
                 ) * 10 
             
             df.at[idx, 'overall_score'] = round(overall_score, 2)
